@@ -1,14 +1,10 @@
 import json
 import os
-import time
+import re
 import urllib.request
-import xml.etree.ElementTree as ET
 
 # Configuración del canal de Dobshman
-CHANNEL_ID = "UC4pncBlim9VvDbWXXBgo5KA"
-# Usamos una instancia pública de Invidious para el feed RSS (evita el bloqueo 404 de YouTube)
-RSS_URL = f"https://invidious.nerdvpn.de/feed/channel/{CHANNEL_ID}"
-
+CHANNEL_URL = "https://www.youtube.com/@Dobshman/videos"
 WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 KEYWORDS = [
     "drop",
@@ -47,7 +43,8 @@ def send_to_discord(video_url, title):
   req.add_header("Content-Type", "application/json")
   req.add_header(
       "User-Agent",
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,"
+      " like Gecko) Chrome/120.0.0.0 Safari/537.36",
   )
 
   try:
@@ -59,82 +56,60 @@ def send_to_discord(video_url, title):
     return False
 
 
-def fetch_rss_with_retries(url, retries=3, delay=5):
-  headers = {
-      "User-Agent": (
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-      ),
-      "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8",
-  }
-
-  for attempt in range(1, retries + 1):
-    try:
-      req = urllib.request.Request(url, headers=headers)
-      with urllib.request.urlopen(req) as response:
-        return response.read()
-    except Exception as e:
-      print(f"Intento {attempt}/{retries} fallido al obtener el feed: {e}")
-      if attempt < retries:
-        print(f"Reintentando en {delay} segundos...")
-        time.sleep(delay)
-      else:
-        return None
-
-
 def main():
   sent_videos = load_sent_videos()
 
-  xml_data = fetch_rss_with_retries(RSS_URL)
-  if not xml_data:
-    print("No se pudo obtener el feed alternativo.")
-    return
+  req = urllib.request.Request(
+      CHANNEL_URL,
+      headers={
+          "User-Agent": (
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+              " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          ),
+          "Accept-Language": "es-ES,es;q=0.9",
+      },
+  )
 
   try:
-    root = ET.fromstring(xml_data)
+    with urllib.request.urlopen(req) as response:
+      html_content = response.read().decode("utf-8")
   except Exception as e:
-    print(f"Error al parsear el XML: {e}")
+    print(f"Error obteniendo la página de YouTube: {e}")
     return
 
-  ns = {
-      "yt": "http://www.youtube.com/xml/schemas/2015",
-      "atom": "http://www.w3.org/2005/Atom",
-      "media": "http://search.yahoo.com/mrss/",
-  }
+  # Patrón para extraer IDs de videos y títulos incrustados en el JSON de la página de YouTube
+  # Busca coincidencias del tipo {"videoId":"XXXXXXXXXXX","title":{"runs":[{"text":"..."}]}}
+  pattern = re.r_compile(
+      r'{"videoId":"([a-zA-Z0-9_-]{11})",.*?"title":\{"runs":\[\{"text":"([^"]+)"'
+  )
 
-  # Invidious / Atom estándar
-  for entry in reversed(root.findall("atom:entry", ns)):
-    id_elem = entry.find("atom:id", ns)
-    if id_elem is not None and ":" in id_elem.text:
-      video_id = id_elem.text.split(":")[-1]
-    else:
+  matches = re.findall(
+      r'"videoId":"([a-zA-Z0-9_-]{11})".*?"title":\{"runs":\[\{"text":"([^"]+)"',
+      html_content,
+  )
+
+  if not matches:
+    # Intento alternativo de patrón por si cambia la estructura de YouTube
+    matches = re.findall(
+        r'"videoId":"([a-zA-Z0-9_-]{11})".*?"accessibility":\{"accessibilityData":\{"label":"([^"]+)"',
+        html_content,
+    )
+
+  processed_ids = set()
+
+  for video_id, title in matches:
+    if video_id in processed_ids:
       continue
-
-    title_elem = entry.find("atom:title", ns)
-    title = title_elem.text if title_elem is not None else ""
-
-    link_elem = entry.find("atom:link", ns)
-    video_url = (
-        link_elem.attrib.get("href")
-        if link_elem is not None
-        else f"https://www.youtube.com/watch?v={video_id}"
-    )
-
-    description_elem = entry.find("media:group/media:description", ns)
-    if description_elem is None:
-      description_elem = entry.find("atom:content", ns)
-    description = (
-        description_elem.text
-        if description_elem is not None and description_elem.text
-        else ""
-    )
+    processed_ids.add(video_id)
 
     if video_id in sent_videos:
       continue
 
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
     title_lower = title.lower()
-    desc_lower = description.lower()
 
-    if any(kw in title_lower or kw in desc_lower for kw in KEYWORDS):
+    # Comprobación de palabras clave solo en el título (más seguro mediante scraping HTML)
+    if any(kw in title_lower for kw in KEYWORDS):
       if send_to_discord(video_url, title):
         save_sent_video(video_id)
         sent_videos.add(video_id)
