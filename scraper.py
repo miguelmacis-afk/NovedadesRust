@@ -45,7 +45,7 @@ def send_to_discord(video_url, title):
 
   try:
     urllib.request.urlopen(req, data=json.dumps(data).encode("utf-8"))
-    print(f"Enviado a Discord: {title}")
+    print(f"Enviado a Discord con éxito: {title}")
     return True
   except Exception as e:
     print(f"Error enviando a Discord: {e}")
@@ -57,14 +57,14 @@ def fetch_latest_videos():
       "extract_flat": True,
       "skip_download": True,
       "quiet": True,
-      "playlistend": 10,  # Revisa los 10 vídeos más recientes
+      "playlistend": 10,
   }
 
   videos = []
   try:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
       info = ydl.extract_info(CHANNEL_URL, download=False)
-      if "entries" in info:
+      if info and "entries" in info:
         for entry in info["entries"]:
           if entry:
             v_id = entry.get("id")
@@ -88,7 +88,6 @@ def main():
     print("No se pudieron obtener los vídeos del canal.")
     return
 
-  # Procesar de más antiguo a más reciente
   for video in reversed(videos):
     video_id = video["id"]
     title = video["title"]
