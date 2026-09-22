@@ -5,12 +5,8 @@ import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 
-# ==========================================
-# CONFIGURACIÓN
-# ==========================================
-# Reemplaza este valor con el Channel ID real obtenido en el paso anterior
-CHANNEL_ID = "UC4pncBlim9VvDbWXXBgo5KA" 
-
+# Configuración con tu Channel ID verificado
+CHANNEL_ID = "UC4pncBlim9VvDbWXXBgo5KA"
 WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 KEYWORDS = [
     "drop",
@@ -21,7 +17,7 @@ KEYWORDS = [
     "update",
 ]
 DB_FILE = "sent_videos.txt"
-TIMEOUT = 10
+TIMEOUT = 15
 
 
 def load_sent_videos():
@@ -84,29 +80,46 @@ def send_to_discord(video_url, title):
     return False
 
 
+def fetch_rss_xml(channel_id):
+    """Intenta descargar el feed RSS oficial y usa una instancia RSS de respaldo si Google bloquea la IP."""
+    urls = [
+        f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}",
+        f"https://inv.hostux.net/feed/channel/{channel_id}",  # Fallback Invidious si YouTube bloquea la IP
+    ]
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/122.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+    for url in urls:
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+                if resp.status == 200:
+                    return resp.read()
+        except urllib.error.HTTPError as e:
+            print(f"Aviso: Error HTTP {e.code} al consultar {url}")
+        except Exception as e:
+            print(f"Aviso: Error de conexión en {url}: {e}")
+
+    return None
+
+
 def main():
-    if not CHANNEL_ID or CHANNEL_ID.startswith("UC_AQUÍ"):
-        print("Error: Debes poner el CHANNEL_ID real en el script.")
+    print(f"Consultando feed para el canal: {CHANNEL_ID}")
+    xml_data = fetch_rss_xml(CHANNEL_ID)
+
+    if not xml_data:
+        print("Error: No se pudo obtener el feed RSS desde ninguna fuente.")
         return
 
-    print(f"Consultando feed RSS para el canal: {CHANNEL_ID}")
-    rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={CHANNEL_ID}"
     sent_videos = load_sent_videos()
-
-    req = urllib.request.Request(
-        rss_url,
-        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
-    )
-
-    try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as response:
-            xml_data = response.read()
-    except urllib.error.HTTPError as e:
-        print(f"Error HTTP obteniendo el feed RSS ({e.code}): Comprueba que el CHANNEL_ID sea correcto.")
-        return
-    except Exception as e:
-        print(f"Error de conexión obteniendo el feed: {e}")
-        return
 
     try:
         root = ET.fromstring(xml_data)
@@ -130,7 +143,9 @@ def main():
 
         video_id = video_id_elem.text
         title = title_elem.text
-        video_url = link_elem.attrib.get("href", f"https://www.youtube.com/watch?v={video_id}")
+        video_url = link_elem.attrib.get(
+            "href", f"https://www.youtube.com/watch?v={video_id}"
+        )
 
         description_elem = entry.find("media:group/media:description", ns)
         description = (
@@ -142,7 +157,9 @@ def main():
         if video_id in sent_videos:
             continue
 
-        if matches_keywords(title, KEYWORDS) or matches_keywords(description, KEYWORDS):
+        if matches_keywords(title, KEYWORDS) or matches_keywords(
+            description, KEYWORDS
+        ):
             if send_to_discord(video_url, title):
                 save_sent_video(video_id)
                 sent_videos.add(video_id)
