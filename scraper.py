@@ -4,8 +4,11 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 # Configuración del canal de Dobshman
+# Usamos el feed basado en el nombre de usuario/handle si el ID directo falla,
+# o puedes mantener el ID 'UC...' correcto.
 CHANNEL_ID = "UC4pncBlim9VvDbWXXBgo5KA"
 RSS_URL = f"https://www.youtube.com/feeds/videos.xml?channel_id={CHANNEL_ID}"
+
 WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 KEYWORDS = [
     "drop",
@@ -62,6 +65,10 @@ def main():
     xml_data = response.read()
   except Exception as e:
     print(f"Error obteniendo el feed de YouTube: {e}")
+    print(
+        "Sugerencia: Comprueba que el CHANNEL_ID sea exacto inspeccionando el"
+        " código fuente de https://www.youtube.com/@Dobshman"
+    )
     return
 
   root = ET.fromstring(xml_data)
@@ -71,13 +78,11 @@ def main():
       "media": "http://search.yahoo.com/mrss/",
   }
 
-  # Buscar todos los vídeos del feed
   for entry in reversed(root.findall("atom:entry", ns)):
     video_id = entry.find("yt:videoId", ns).text
     title = entry.find("atom:title", ns).text
     video_url = entry.find("atom:link", ns).attrib["href"]
 
-    # Extraer descripción si existe
     description_elem = entry.find("media:group/media:description", ns)
     description = (
         description_elem.text
@@ -86,12 +91,11 @@ def main():
     )
 
     if video_id in sent_videos:
-      continue  # Se salta si ya fue enviado
+      continue
 
     title_lower = title.lower()
     desc_lower = description.lower()
 
-    # Filtrar por palabras clave en título o descripción
     if any(kw in title_lower or kw in desc_lower for kw in KEYWORDS):
       if send_to_discord(video_url, title):
         save_sent_video(video_id)
