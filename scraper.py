@@ -21,8 +21,7 @@ TIMEOUT = 10  # Tiempo límite en segundos para las peticiones HTTP
 
 
 def get_channel_id(handle):
-    """Obtiene el Channel ID ('UC...') mediante scraping ligero de la página del canal."""
-    # Asegurar el formato con @
+    """Obtiene el Channel ID ('UC...') buscando las etiquetas meta canónicas de YouTube."""
     if not handle.startswith("@"):
         handle = f"@{handle}"
 
@@ -33,7 +32,7 @@ def get_channel_id(handle):
             "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         ),
         "Accept-Language": "en-US,en;q=0.9",
-        "Cookie": "SOCS=CAI",  # Salta la pantalla de consentimiento de cookies
+        "Cookie": "SOCS=CAI",
     }
 
     req = urllib.request.Request(url, headers=headers)
@@ -41,13 +40,16 @@ def get_channel_id(handle):
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             html = resp.read().decode("utf-8")
 
-        # Patrones de búsqueda por orden de fiabilidad
+        # Patrones ordenados por precisión estricta para evitar extraer canales recomendados
         patterns = [
-            r'itemprop="channelId"\s+content="(UC[a-zA-Z0-9_-]{22})"',
-            r'"externalId":"(UC[a-zA-Z0-9_-]{22})"',
-            r'"channelId":"(UC[a-zA-Z0-9_-]{22})"',
-            r"channel_id=(UC[a-zA-Z0-9_-]{22})",
-            r'youtube\.com/channel/(UC[a-zA-Z0-9_-]{22})"',
+            # 1. Enlace RSS que YouTube incluye explícitamente en el <head>
+            r'href="https://www\.youtube\.com/feeds/videos\.xml\?channel_id=(UC[a-zA-Z0-9_-]{22})"',
+            # 2. URL canónica del canal
+            r'<link rel="canonical" href="https://www\.youtube\.com/channel/(UC[a-zA-Z0-9_-]{22})">',
+            # 3. Meta etiqueta og:url
+            r'<meta property="og:url" content="https://www\.youtube\.com/channel/(UC[a-zA-Z0-9_-]{22})">',
+            # 4. JSON de inicialización del canal principal
+            r'"canonicalChannelUrl":"https://www\.youtube\.com/channel/(UC[a-zA-Z0-9_-]{22})"',
         ]
 
         for pattern in patterns:
