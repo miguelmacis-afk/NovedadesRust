@@ -39,9 +39,9 @@ jobs:
           touch sent_videos.txt
           git add sent_videos.txt
           
-          # Si hay cambios, hacer pull rebase antes del commit/push para evitar conflictos
-          if ! git diff --quiet || ! git diff --staged --quiet; then
-            git pull --rebase origin main
+          # Hacer commit PRIMERO para limpiar el index, luego pull --rebase y push
+          if ! git diff --staged --quiet; then
             git commit -m "chore: actualizar registro de vídeos [skip ci]"
+            git pull --rebase origin main
             git push
           fi
