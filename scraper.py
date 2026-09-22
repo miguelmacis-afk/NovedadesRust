@@ -4,9 +4,11 @@ import time
 import urllib.request
 import xml.etree.ElementTree as ET
 
-# Configuración
+# Configuración del canal de Dobshman
 CHANNEL_ID = "UC4pncBlim9VvDbWXXBgo5KA"
-RSS_URL = f"https://www.youtube.com/feeds/videos.xml?channel_id={CHANNEL_ID}"
+# Usamos una instancia pública de Invidious para el feed RSS (evita el bloqueo 404 de YouTube)
+RSS_URL = f"https://invidious.nerdvpn.de/feed/channel/{CHANNEL_ID}"
+
 WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 KEYWORDS = [
     "drop",
@@ -45,8 +47,7 @@ def send_to_discord(video_url, title):
   req.add_header("Content-Type", "application/json")
   req.add_header(
       "User-Agent",
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,"
-      " like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
   )
 
   try:
@@ -61,11 +62,9 @@ def send_to_discord(video_url, title):
 def fetch_rss_with_retries(url, retries=3, delay=5):
   headers = {
       "User-Agent": (
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,"
-          " like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
       ),
       "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8",
-      "Accept-Language": "es-ES,es;q=0.9",
   }
 
   for attempt in range(1, retries + 1):
@@ -79,10 +78,6 @@ def fetch_rss_with_retries(url, retries=3, delay=5):
         print(f"Reintentando en {delay} segundos...")
         time.sleep(delay)
       else:
-        print(
-            "YouTube sigue devolviendo error (suele ser temporal en sus"
-            " servidores RSS). Inténtalo más tarde."
-        )
         return None
 
 
@@ -91,12 +86,13 @@ def main():
 
   xml_data = fetch_rss_with_retries(RSS_URL)
   if not xml_data:
+    print("No se pudo obtener el feed alternativo.")
     return
 
   try:
     root = ET.fromstring(xml_data)
   except Exception as e:
-    print(f"Error al parsear el XML de YouTube: {e}")
+    print(f"Error al parsear el XML: {e}")
     return
 
   ns = {
@@ -105,12 +101,27 @@ def main():
       "media": "http://search.yahoo.com/mrss/",
   }
 
+  # Invidious / Atom estándar
   for entry in reversed(root.findall("atom:entry", ns)):
-    video_id = entry.find("yt:videoId", ns).text
-    title = entry.find("atom:title", ns).text
-    video_url = entry.find("atom:link", ns).attrib["href"]
+    id_elem = entry.find("atom:id", ns)
+    if id_elem is not None and ":" in id_elem.text:
+      video_id = id_elem.text.split(":")[-1]
+    else:
+      continue
+
+    title_elem = entry.find("atom:title", ns)
+    title = title_elem.text if title_elem is not None else ""
+
+    link_elem = entry.find("atom:link", ns)
+    video_url = (
+        link_elem.attrib.get("href")
+        if link_elem is not None
+        else f"https://www.youtube.com/watch?v={video_id}"
+    )
 
     description_elem = entry.find("media:group/media:description", ns)
+    if description_elem is None:
+      description_elem = entry.find("atom:content", ns)
     description = (
         description_elem.text
         if description_elem is not None and description_elem.text
