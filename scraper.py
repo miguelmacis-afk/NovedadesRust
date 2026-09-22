@@ -4,7 +4,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 # Configuración
-CHANNEL_ID = "UC_RMVRpdbg9EPeEMxF5f-Fw" # ID extraído del canal @Triko_ez
+CHANNEL_ID = "UC4pncBlim9VvDbWXXBgo5KA" # ID extraído del canal @Triko_ez
 RSS_URL = f"https://www.youtube.com/feeds/videos.xml?channel_id={CHANNEL_ID}"
 WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 KEYWORDS = ["drop", "forced", "forzado", "actualizacion", "actualización", "update"]
@@ -27,7 +27,7 @@ def send_to_discord(video_url, title):
     
     data = {
         "content": f"@everyone \n**{title}**\n{video_url}",
-        "username": "Alerta Triko_ez"
+        "username": "Alerta Dobshman"
     }
    
     req = urllib.request.Request(WEBHOOK_URL, method="POST")
