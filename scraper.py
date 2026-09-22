@@ -1,14 +1,12 @@
 import json
 import os
+import time
 import urllib.request
 import xml.etree.ElementTree as ET
 
-# Configuración del canal de Dobshman
-# Usamos el feed basado en el nombre de usuario/handle si el ID directo falla,
-# o puedes mantener el ID 'UC...' correcto.
+# Configuración
 CHANNEL_ID = "UC4pncBlim9VvDbWXXBgo5KA"
 RSS_URL = f"https://www.youtube.com/feeds/videos.xml?channel_id={CHANNEL_ID}"
-
 WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 KEYWORDS = [
     "drop",
@@ -45,7 +43,11 @@ def send_to_discord(video_url, title):
 
   req = urllib.request.Request(WEBHOOK_URL, method="POST")
   req.add_header("Content-Type", "application/json")
-  req.add_header("User-Agent", "Mozilla/5.0")
+  req.add_header(
+      "User-Agent",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,"
+      " like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  )
 
   try:
     urllib.request.urlopen(req, data=json.dumps(data).encode("utf-8"))
@@ -56,22 +58,47 @@ def send_to_discord(video_url, title):
     return False
 
 
+def fetch_rss_with_retries(url, retries=3, delay=5):
+  headers = {
+      "User-Agent": (
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,"
+          " like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      ),
+      "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8",
+      "Accept-Language": "es-ES,es;q=0.9",
+  }
+
+  for attempt in range(1, retries + 1):
+    try:
+      req = urllib.request.Request(url, headers=headers)
+      with urllib.request.urlopen(req) as response:
+        return response.read()
+    except Exception as e:
+      print(f"Intento {attempt}/{retries} fallido al obtener el feed: {e}")
+      if attempt < retries:
+        print(f"Reintentando en {delay} segundos...")
+        time.sleep(delay)
+      else:
+        print(
+            "YouTube sigue devolviendo error (suele ser temporal en sus"
+            " servidores RSS). Inténtalo más tarde."
+        )
+        return None
+
+
 def main():
   sent_videos = load_sent_videos()
 
-  req = urllib.request.Request(RSS_URL, headers={"User-Agent": "Mozilla/5.0"})
-  try:
-    response = urllib.request.urlopen(req)
-    xml_data = response.read()
-  except Exception as e:
-    print(f"Error obteniendo el feed de YouTube: {e}")
-    print(
-        "Sugerencia: Comprueba que el CHANNEL_ID sea exacto inspeccionando el"
-        " código fuente de https://www.youtube.com/@Dobshman"
-    )
+  xml_data = fetch_rss_with_retries(RSS_URL)
+  if not xml_data:
     return
 
-  root = ET.fromstring(xml_data)
+  try:
+    root = ET.fromstring(xml_data)
+  except Exception as e:
+    print(f"Error al parsear el XML de YouTube: {e}")
+    return
+
   ns = {
       "yt": "http://www.youtube.com/xml/schemas/2015",
       "atom": "http://www.w3.org/2005/Atom",
