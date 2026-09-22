@@ -3,10 +3,8 @@ import os
 import urllib.request
 import xml.etree.ElementTree as ET
 
-# Configuración
-CHANNEL_ID = (  # Reemplaza esto con el ID real que empieza por UC de @Dobshman
-    "UCxxxxxxxxxxxxxxxxxxxxxx"
-)
+# Configuración del canal de Dobshman
+CHANNEL_ID = "UC4pncBlim9VvDbWXXBgo5KA"
 RSS_URL = f"https://www.youtube.com/feeds/videos.xml?channel_id={CHANNEL_ID}"
 WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 KEYWORDS = [
