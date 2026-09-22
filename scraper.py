@@ -19,20 +19,35 @@ DB_FILE = "sent_videos.txt"
 
 
 def get_channel_id(handle):
-  """Obtiene el ID oficial 'UC...' directamente desde la página del canal."""
+  """Obtiene el Channel ID ('UC...') saltando la pantalla de consentimiento de YouTube."""
   url = f"https://www.youtube.com/{handle}"
   headers = {
       "User-Agent": (
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-      )
+          " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      ),
+      "Accept-Language": "en-US,en;q=0.9",
+      "Cookie": "SOCS=CAI",  # Evita el bloqueo de la pantalla de consentimiento de cookies
   }
+
   req = urllib.request.Request(url, headers=headers)
   try:
     with urllib.request.urlopen(req) as resp:
       html = resp.read().decode("utf-8")
-      match = re.search(r'"channelId":"(UC[a-zA-Z0-9_-]{22})"', html)
-      if match:
-        return match.group(1)
+
+      # Varios patrones de búsqueda por orden de fiabilidad
+      patterns = [
+          r"channel_id=(UC[a-zA-Z0-9_-]{22})",
+          r'youtube\.com/channel/(UC[a-zA-Z0-9_-]{22})"',
+          r'"externalId":"(UC[a-zA-Z0-9_-]{22})"',
+          r'"channelId":"(UC[a-zA-Z0-9_-]{22})"',
+          r'itemprop="channelId"\s+content="(UC[a-zA-Z0-9_-]{22})"',
+      ]
+
+      for pattern in patterns:
+        match = re.search(pattern, html)
+        if match:
+          return match.group(1)
   except Exception as e:
     print(f"Error al resolver el ID del canal para {handle}: {e}")
   return None
@@ -82,6 +97,7 @@ def main():
     print(f"No se pudo determinar el Channel ID para {HANDLE}.")
     return
 
+  print(f"Channel ID detectado: {channel_id}")
   rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
   sent_videos = load_sent_videos()
 
